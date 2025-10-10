@@ -1,14 +1,31 @@
-# Étape 1 : construire le JAR
-FROM maven:3.9.9-eclipse-temurin-17 AS builder
-WORKDIR /app
+# -----------------------------
+# Étape 1 : Build du JAR avec Maven
+# -----------------------------
+FROM maven:3.9.3-eclipse-temurin-17 AS build
+
+# Définir le répertoire de travail
+WORKDIR /tomabotapp
+
+# Copier les fichiers Maven
 COPY pom.xml .
-RUN mvn dependency:go-offline
 COPY src ./src
+
+# Build du projet et création du JAR
 RUN mvn clean package -DskipTests
 
-# Étape 2 : exécuter le JAR
-FROM eclipse-temurin:17-jdk
-WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
+# -----------------------------
+# Étape 2 : Image finale avec OpenJDK
+# -----------------------------
+FROM eclipse-temurin:17-jdk-jammy
+
+# Répertoire de travail dans le conteneur
+WORKDIR /tomabotapp
+
+# Copier le JAR depuis l'étape build
+COPY --from=build /tomabotapp/target/*.jar tomabotapp.jar
+
+# Exposer le port utilisé par Spring Boot
 EXPOSE 8080
-ENTRYPOINT ["java", "-Dspring.profiles.active=dev", "-jar", "app.jar"]
+
+# Commande pour lancer l'application
+ENTRYPOINT ["java","-jar","tomabotapp.jar"]
