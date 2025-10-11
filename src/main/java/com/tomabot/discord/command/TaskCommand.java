@@ -104,7 +104,7 @@ public class TaskCommand implements SlashCommand {
         if (!pending.isEmpty()) {
             StringBuilder pendingText = new StringBuilder();
             for (Task task : pending) {
-                pendingText.append(String.format("**#%d** - %s\n", task.getId(), task.getTitle()));
+                pendingText.append(String.format("**#%d** - %s%n", task.getId(), task.getTitle()));
             }
             embed.addField("⏳ Pending (" + pending.size() + ")", pendingText.toString(), false);
         }
@@ -112,7 +112,7 @@ public class TaskCommand implements SlashCommand {
         if (!completed.isEmpty()) {
             StringBuilder completedText = new StringBuilder();
             for (Task task : completed.stream().limit(5).toList()) {
-                completedText.append(String.format("~~#%d - %s~~\n", task.getId(), task.getTitle()));
+                completedText.append(String.format("~~#%d - %s~~%n", task.getId(), task.getTitle()));
             }
             if (completed.size() > 5) {
                 completedText.append("*...and ").append(completed.size() - 5).append(" more*");

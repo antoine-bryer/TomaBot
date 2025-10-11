@@ -46,7 +46,7 @@ public class StartCommand implements SlashCommand {
         User user = userService.getOrCreateUser(discordId, username);
 
         // Get duration
-        Integer duration = event.getOption("duration") != null
+        int duration = event.getOption("duration") != null
                 ? event.getOption("duration").getAsInt()
                 : 25;
 
@@ -75,10 +75,11 @@ public class StartCommand implements SlashCommand {
             EmbedBuilder embed = new EmbedBuilder()
                     .setColor(Color.decode("#FF6B6B"))
                     .setTitle("🍅 Pomodoro Started!")
-                    .setDescription("Time to focus! Your session has begun.\n\n" +
-                            "🔴 **Focus mode activated**\n" +
-                            "• Role '🍅 In Focus' added\n" +
-                            "• Voice muted (if connected)")
+                    .setDescription("""
+                            Time to focus! Your session has begun.
+                            🔴 **Focus mode activated**
+                            • Role '🍅 In Focus' added
+                            • Voice muted (if connected)""")
                     .addField("Duration", duration + " minutes", true)
                     .addField("Ends at", String.format("<t:%d:t>",
                             System.currentTimeMillis() / 1000 + (duration * 60)), true)

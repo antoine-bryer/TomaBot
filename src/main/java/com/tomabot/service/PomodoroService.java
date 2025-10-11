@@ -22,14 +22,19 @@ public class PomodoroService {
     private final PomodoroSessionRepository sessionRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final SchedulerService schedulerService;
+    private final StatsService statsService; // NEW: Stats integration
 
     private static final String ACTIVE_SESSION_KEY = "session:active:";
 
     @Transactional
-    public void startSession(User user, Integer durationMinutes) {
+    public PomodoroSession startSession(User user, Integer durationMinutes) {
         // Check if already has active session
-        if (hasActiveSession(user)) {
-            throw new IllegalStateException("You already have an active session! Use /stop first.");
+        try {
+            if (hasActiveSession(user)) {
+                throw new IllegalStateException("You already have an active session! Use /stop first.");
+            }
+        } catch (Exception e) {
+            log.warn("Redis check failed, continuing without cache: {}", e.getMessage());
         }
 
         Instant now = Instant.now();
@@ -47,14 +52,19 @@ public class PomodoroService {
 
         session = sessionRepository.save(session);
 
-        // Store in Redis for quick access
-        String key = ACTIVE_SESSION_KEY + user.getDiscordId();
-        redisTemplate.opsForValue().set(key, session.getId(), durationMinutes, TimeUnit.MINUTES);
+        // Store in Redis for quick access (with error handling)
+        try {
+            String key = ACTIVE_SESSION_KEY + user.getDiscordId();
+            redisTemplate.opsForValue().set(key, session.getId(), durationMinutes, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("Failed to cache session in Redis: {}", e.getMessage());
+        }
 
         // Schedule completion job
         schedulerService.scheduleSessionCompletion(session.getId(), user.getDiscordId(), endTime);
 
         log.info("Started session {} for user {}", session.getId(), user.getDiscordId());
+        return session;
     }
 
     @Transactional
@@ -70,6 +80,9 @@ public class PomodoroService {
 
         session.interrupt();
         sessionRepository.save(session);
+
+        // Update stats after interruption
+        statsService.updateStatsAfterSession(user, session);
 
         // Remove from Redis
         String key = ACTIVE_SESSION_KEY + user.getDiscordId();
@@ -93,6 +106,9 @@ public class PomodoroService {
 
         session.complete();
         sessionRepository.save(session);
+
+        // Update stats after completion
+        statsService.updateStatsAfterSession(session.getUser(), session);
 
         // Remove from Redis
         String key = ACTIVE_SESSION_KEY + discordId;
@@ -135,8 +151,16 @@ public class PomodoroService {
     }
 
     private Long getActiveSessionId(User user) {
-        String key = ACTIVE_SESSION_KEY + user.getDiscordId();
-        Object value = redisTemplate.opsForValue().get(key);
-        return value != null ? Long.parseLong(value.toString()) : null;
+        try {
+            String key = ACTIVE_SESSION_KEY + user.getDiscordId();
+            Object value = redisTemplate.opsForValue().get(key);
+            return value != null ? Long.parseLong(value.toString()) : null;
+        } catch (Exception e) {
+            log.warn("Redis unavailable, checking database for active session");
+            // Fallback: check database
+            return sessionRepository.findByUserAndCompletedAndInterrupted(user, false, false)
+                    .map(PomodoroSession::getId)
+                    .orElse(null);
+        }
     }
 }

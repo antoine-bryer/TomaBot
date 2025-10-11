@@ -53,8 +53,9 @@ public class StopCommand implements SlashCommand {
             EmbedBuilder embed = new EmbedBuilder()
                     .setColor(Color.decode("#95E1D3"))
                     .setTitle("⏸️ Session Stopped")
-                    .setDescription("Your Pomodoro session has been stopped.\n\n" +
-                            "✅ Focus mode deactivated")
+                    .setDescription("""
+                            Your Pomodoro session has been stopped.
+                            ✅ Focus mode deactivated""")
                     .setFooter("Start a new session with /start")
                     .setTimestamp(java.time.Instant.now());
 

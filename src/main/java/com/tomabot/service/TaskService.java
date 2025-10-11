@@ -16,6 +16,7 @@ import java.util.List;
 public class TaskService {
 
     private final TaskRepository taskRepository;
+    private final StatsService statsService; // NEW: Stats integration
 
     @Value("${tomabot.limits.freemium.max-tasks:5}")
     private Integer freemiumMaxTasks;
@@ -66,6 +67,9 @@ public class TaskService {
 
         task.complete();
         task = taskRepository.save(task);
+
+        // NEW: Update stats after task completion
+        statsService.updateStatsAfterTaskCompletion(user);
 
         log.info("Completed task {} for user {}", taskId, user.getDiscordId());
         return task;

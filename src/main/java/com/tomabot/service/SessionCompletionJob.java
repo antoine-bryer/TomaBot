@@ -46,20 +46,21 @@ public class SessionCompletionJob implements Job {
                 EmbedBuilder embed = new EmbedBuilder()
                         .setColor(Color.decode("#38D39F"))
                         .setTitle("🎉 Pomodoro Complete!")
-                        .setDescription("Great job! Your focus session is complete.\n\n" +
-                                "✅ Focus mode deactivated")
+                        .setDescription("""
+                                Great job! Your focus session is complete.
+                                ✅ Focus mode deactivated""")
                         .addField("Time for a break?",
                                 "Use `/start` to begin another session", false)
                         .setFooter("Keep up the great work! 🍅")
                         .setTimestamp(java.time.Instant.now());
 
-                user.openPrivateChannel().queue(channel -> {
+                user.openPrivateChannel().queue(channel ->
                     channel.sendMessageEmbeds(embed.build()).queue(
                             success -> log.info("Sent completion notification to {}", discordId),
                             error -> log.warn("Failed to send notification to {}: {}",
                                     discordId, error.getMessage())
-                    );
-                });
+                    )
+                );
             }
 
         } catch (Exception e) {
