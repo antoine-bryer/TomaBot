@@ -1,0 +1,45 @@
+# docker-compose.dev.yml
+# Configuration for local development
+
+version: '3.8'
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"  # Exposed for local access (DBeaver, etc.)
+
+  redis:
+    ports:
+      - "6379:6379"  # Exposed for local access (redis-cli)
+
+  tomabot:
+    # In dev: local build instead of Docker Hub image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"  # Expose API (if you add REST endpoints)
+      - "5005:5005"
+    volumes:
+      # Hot reload: mount source code (optional, for rapid development)
+      - ./target:/tomabotApp/target:ro
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      # More verbose logs in dev
+      LOGGING_LEVEL_COM_TOMABOT: DEBUG
+      # JVM in dev mode (less memory, debug enabled)
+      JAVA_OPTS: -Xmx256m -Xms128m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+
+  # Adminer (dev only)
+  adminer:
+    image: adminer:latest
+    container_name: tomabot-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - tomabot-network
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres

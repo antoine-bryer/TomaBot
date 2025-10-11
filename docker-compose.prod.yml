@@ -1,0 +1,64 @@
+# docker-compose.prod.yml
+# Configuration for production
+
+version: '3.8'
+
+services:
+  postgres:
+    # No port exposure in production (security)
+    # Only accessible from internal Docker network
+    environment:
+      # Additional production configurations
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  redis:
+    # No port exposure in production
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  tomabot:
+    # In prod: use image from Docker Hub
+    image: ${DOCKER_USERNAME}/tomabot:${VERSION:-latest}
+    # Rebuild if needed (uncomment if building in prod)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # Less verbose logs in production
+      LOGGING_LEVEL_ROOT: WARN
+      LOGGING_LEVEL_COM_TOMABOT: INFO
+      # JVM optimized for production
+      JAVA_OPTS: -Xmx512m -Xms512m -XX:+UseG1GC -XX:+MaxGCPauseMillis=200
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+      # Restart policy
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # NO Adminer in production (security)
