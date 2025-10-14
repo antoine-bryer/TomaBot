@@ -2,6 +2,7 @@ package com.tomabot.service;
 
 import com.tomabot.model.entity.Task;
 import com.tomabot.model.entity.User;
+import com.tomabot.model.enums.XPSource;
 import com.tomabot.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +17,8 @@ import java.util.List;
 public class TaskService {
 
     private final TaskRepository taskRepository;
-    private final StatsService statsService; // NEW: Stats integration
+    private final StatsService statsService;
+    private final ExperienceService experienceService; // NEW: XP integration
 
     @Value("${tomabot.limits.freemium.max-tasks:5}")
     private Integer freemiumMaxTasks;
@@ -68,8 +70,16 @@ public class TaskService {
         task.complete();
         task = taskRepository.save(task);
 
-        // NEW: Update stats after task completion
+        // Update stats after task completion
         statsService.updateStatsAfterTaskCompletion(user);
+
+        // Grant XP for completing task
+        try {
+            experienceService.grantXP(user, XPSource.TASK_COMPLETED, task.getId());
+            log.info("Granted task completion XP to user {}", user.getDiscordId());
+        } catch (Exception e) {
+            log.error("Failed to grant task XP to user {}", user.getDiscordId(), e);
+        }
 
         log.info("Completed task {} for user {}", taskId, user.getDiscordId());
         return task;
