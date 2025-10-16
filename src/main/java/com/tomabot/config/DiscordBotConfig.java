@@ -1,5 +1,6 @@
 package com.tomabot.config;
 
+import com.tomabot.discord.listener.CommandAutocompleteListener;
 import com.tomabot.discord.listener.CommandListener;
 import com.tomabot.discord.listener.ReadyListener;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class DiscordBotConfig {
 
     private final CommandListener commandListener;
     private final ReadyListener readyListener;
+    private final CommandAutocompleteListener commandAutocompleteListener;
 
     @Bean
     public JDA jda() throws Exception {
@@ -45,7 +47,7 @@ public class DiscordBotConfig {
                 )
                 .setMemberCachePolicy(MemberCachePolicy.ALL)
                 .setChunkingFilter(ChunkingFilter.ALL)
-                .addEventListeners(commandListener, readyListener)
+                .addEventListeners(commandListener, readyListener, commandAutocompleteListener)
                 .build();
 
         jda.awaitReady();

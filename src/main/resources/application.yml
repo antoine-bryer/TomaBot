@@ -108,9 +108,20 @@ tomabot:
     streak-check-cron: "0 0 * * * *"       # Every hour
     weekly-cleanup-cron: "0 0 1 * * SUN"   # 01:00 AM Sunday
 
-  leaderboard:
-    top-users-count: 10
-    cache-ttl-minutes: 10
+    leaderboard:
+      top-users-count: 100
+      cache-ttl-hours: 1
+      display-limit: 10
+      refresh-cron: "0 0 * * * *"            # Every hour
+      cleanup-cron: "0 0 0 * * *"            # Daily at midnight
+      enabled-types:
+        - LEVEL
+        - XP
+        - SESSIONS
+        - FOCUS_TIME
+        - STREAK
+        - TASKS
+        - ACHIEVEMENTS
 
   timezone:
     default: UTC

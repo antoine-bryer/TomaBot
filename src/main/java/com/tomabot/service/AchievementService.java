@@ -5,7 +5,6 @@ import com.tomabot.model.entity.Achievement;
 import com.tomabot.model.entity.User;
 import com.tomabot.model.entity.UserAchievement;
 import com.tomabot.model.entity.UserStats;
-import com.tomabot.model.enums.AchievementType;
 import com.tomabot.model.enums.XPSource;
 import com.tomabot.repository.AchievementRepository;
 import com.tomabot.repository.PomodoroSessionRepository;
@@ -22,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.awt.Color;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -92,7 +90,7 @@ public class AchievementService {
 
             // Check if requirement is met
             if (isRequirementMet(user, stats, achievement)) {
-                unlockAchievement(user, achievement);
+                unlockAchievement(user, achievement); //NOSONAR
                 unlocked.add(achievement);
             }
         }
