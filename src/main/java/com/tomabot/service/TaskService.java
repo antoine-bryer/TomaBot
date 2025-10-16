@@ -18,7 +18,8 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final StatsService statsService;
-    private final ExperienceService experienceService; // NEW: XP integration
+    private final ExperienceService experienceService;
+    private final AchievementService achievementService;
 
     @Value("${tomabot.limits.freemium.max-tasks:5}")
     private Integer freemiumMaxTasks;
@@ -77,6 +78,8 @@ public class TaskService {
         try {
             experienceService.grantXP(user, XPSource.TASK_COMPLETED, task.getId());
             log.info("Granted task completion XP to user {}", user.getDiscordId());
+
+            achievementService.checkAndUnlockAchievements(user);
         } catch (Exception e) {
             log.error("Failed to grant task XP to user {}", user.getDiscordId(), e);
         }
