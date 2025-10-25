@@ -1,16 +1,78 @@
 # docker-compose.prod.yml
-# Configuration for production
-
-version: '3.8'
+# Configuration overrides pour production
 
 services:
+  # TomaBot Application (Production)
+  tomabot:
+    container_name: tomabot-app
+    image: ${DOCKER_USERNAME}/tomabot:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Spring
+      SPRING_PROFILES_ACTIVE: prod
+
+      # Discord
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      # JVM Options (production optimized)
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx512m -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
+
+    networks:
+      - tomabot-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+
+  # PostgreSQL (production)
   postgres:
     # No port exposure in production (security)
-    # Only accessible from internal Docker network
+    ports: []
     environment:
-      # Additional production configurations
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
-    # Resource limits
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -20,8 +82,23 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # Redis (production)
   redis:
-    # No port exposure in production
+    # No port exposure in production (security)
+    ports: []
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    volumes:
+      - redis_data_prod:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
     deploy:
       resources:
         limits:
@@ -31,34 +108,14 @@ services:
           cpus: '0.25'
           memory: 128M
 
-  tomabot:
-    # In prod: use image from Docker Hub
-    image: ${DOCKER_USERNAME}/tomabot:${VERSION:-latest}
-    # Rebuild if needed (uncomment if building in prod)
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      # Less verbose logs in production
-      LOGGING_LEVEL_ROOT: WARN
-      LOGGING_LEVEL_COM_TOMABOT: INFO
-      # JVM optimized for production
-      JAVA_OPTS: -Xmx512m -Xms512m -XX:+UseG1GC -XX:+MaxGCPauseMillis=200
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 1G
-        reservations:
-          cpus: '1.0'
-          memory: 512M
-      # Restart policy
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 120s
+  # Adminer - DISABLED IN PRODUCTION
+  adminer:
+    profiles:
+      - debug  # Only start with: docker-compose --profile debug up
+    ports: []
 
-  # NO Adminer in production (security)
+volumes:
+  postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local

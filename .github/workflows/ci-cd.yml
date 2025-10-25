@@ -1,0 +1,348 @@
+name: TomaBot CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/tomabot
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+jobs:
+  # ============================================
+  # JOB 1: BUILD & TEST
+  # ============================================
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: 🔧 Build with Maven
+        run: mvn clean install -DskipTests
+
+      - name: 📊 Send build notification to Discord
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            COLOR=3066993
+            EMOJI="✅"
+            STATUS="Build Successful"
+          else
+            COLOR=15158332
+            EMOJI="❌"
+            STATUS="Build Failed"
+          fi
+          
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"$EMOJI TomaBot CI/CD - Build\",
+              \"description\": \"**Status:** $STATUS\n**Branch:** \`${{ github.ref_name }}\`\n**Commit:** [\`${GITHUB_SHA:0:7}\`](${{ github.event.head_commit.url }})\n**Author:** ${{ github.actor }}\",
+              \"color\": $COLOR,
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" ${{ env.DISCORD_WEBHOOK_URL }}
+
+  # ============================================
+  # JOB 2: BUILD & PUSH DOCKER IMAGE (master only)
+  # ============================================
+  docker:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    steps:
+      - name: 📦 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔑 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 📝 Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+
+      - name: 📊 Send Docker build notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            COLOR=3066993
+            EMOJI="✅"
+            STATUS="Docker Image Built & Pushed"
+            TAG="latest"
+          else
+            COLOR=15158332
+            EMOJI="❌"
+            STATUS="Docker Build Failed"
+            TAG="N/A"
+          fi
+          
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"$EMOJI TomaBot CI/CD - Docker\",
+              \"description\": \"**Status:** $STATUS\n**Image:** \`${{ env.DOCKER_IMAGE }}:$TAG\`\n**Commit:** [\`${GITHUB_SHA:0:7}\`](${{ github.event.head_commit.url }})\",
+              \"color\": $COLOR,
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" ${{ env.DISCORD_WEBHOOK_URL }}
+
+  # ============================================
+  # JOB 3: DEPLOY TO VPS (master only)
+  # ============================================
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    steps:
+      - name: 📦 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📂 Copy Docker Compose files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "docker-compose.yml,docker-compose.prod.yml,init-db.sql"
+          target: "/opt/tomabot"
+          strip_components: 0
+          overwrite: true
+
+      - name: 🚀 Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            # Navigate to app directory
+            cd /opt/tomabot || exit 1
+            
+            # Create .env file with secrets
+            echo "Creating .env file..."
+            cat > .env << EOF
+            # Discord
+            DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
+            
+            # Database
+            DB_HOST=${{ secrets.DB_HOST }}
+            DB_PORT=${{ secrets.DB_PORT }}
+            DB_NAME=${{ secrets.DB_NAME }}
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            
+            # Redis
+            REDIS_HOST=${{ secrets.REDIS_HOST }}
+            REDIS_PORT=${{ secrets.REDIS_PORT }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            
+            # Spring
+            SPRING_PROFILES_ACTIVE=prod
+            
+            # Docker
+            DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
+            VERSION=latest
+            
+            # JVM
+            JAVA_OPTS=-Xmx512m -Xms512m -XX:+UseG1GC
+            EOF
+            
+            # Pull latest Docker image
+            echo "Pulling latest Docker image..."
+            docker pull ${{ env.DOCKER_IMAGE }}:latest
+            
+            # Stop and remove old containers
+            echo "Stopping old containers..."
+            docker-compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml down
+            
+            # Start new containers
+            echo "Starting new containers..."
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            
+            # Wait for health check
+            echo "Waiting for health check..."
+            sleep 30
+            
+            # Check if TomaBot is running
+            if docker ps | grep -q tomabot-app; then
+              echo "✅ TomaBot deployed successfully!"
+              docker logs --tail 50 tomabot-app
+              exit 0
+            else
+              echo "❌ TomaBot failed to start!"
+              docker logs --tail 100 tomabot-app
+              exit 1
+            fi
+
+      - name: 📊 Send deployment notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            COLOR=3066993
+            EMOJI="✅"
+            STATUS="Deployment Successful"
+            DESCRIPTION="TomaBot has been deployed to production successfully!"
+          else
+            COLOR=15158332
+            EMOJI="❌"
+            STATUS="Deployment Failed"
+            DESCRIPTION="TomaBot deployment failed. Check logs for details."
+          fi
+          
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"$EMOJI TomaBot CI/CD - Deployment\",
+              \"description\": \"**Status:** $STATUS\n$DESCRIPTION\n**Environment:** Production\n**Server:** ${{ secrets.SSH_HOST }}\n**Commit:** [\`${GITHUB_SHA:0:7}\`](${{ github.event.head_commit.url }})\n**Deployed by:** ${{ github.actor }}\",
+              \"color\": $COLOR,
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+              \"footer\": {
+                \"text\": \"TomaBot Production\"
+              }
+            }]
+          }" ${{ env.DISCORD_WEBHOOK_URL }}
+
+  # ============================================
+  # JOB 4: HEALTH CHECK
+  # ============================================
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    steps:
+      - name: 🏥 Check bot status
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /opt/tomabot
+            
+            # Check Docker containers
+            echo "📊 Container Status:"
+            docker-compose ps
+            
+            # Check logs for errors
+            echo -e "\n📋 Recent Logs:"
+            docker logs --tail 20 tomabot-app
+            
+            # Check if bot is connected to Discord
+            if docker logs --tail 100 tomabot-app | grep -q "TomaBot is ready"; then
+              echo -e "\n✅ Bot is connected to Discord!"
+              exit 0
+            else
+              echo -e "\n⚠️ Bot may not be connected yet..."
+              exit 0
+            fi
+
+      - name: 📊 Send health check notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            COLOR=3066993
+            EMOJI="✅"
+            STATUS="Health Check Passed"
+          else
+            COLOR=16776960
+            EMOJI="⚠️"
+            STATUS="Health Check Warning"
+          fi
+          
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"$EMOJI TomaBot CI/CD - Health Check\",
+              \"description\": \"**Status:** $STATUS\n**Environment:** Production\n**All systems operational**\",
+              \"color\": $COLOR,
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" ${{ env.DISCORD_WEBHOOK_URL }}
+
+  # ============================================
+  # JOB 5: ROLLBACK (manual trigger only)
+  # ============================================
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 🔄 Rollback to previous version
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /opt/tomabot
+            
+            echo "🔄 Rolling back to previous version..."
+            
+            # Stop current containers
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
+            
+            # Pull previous image (you should tag images with commit SHA)
+            docker pull ${{ env.DOCKER_IMAGE }}:previous
+            
+            # Start containers with previous image
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            
+            echo "✅ Rollback completed!"
+
+      - name: 📊 Send rollback notification
+        if: always()
+        run: |
+          curl -H "Content-Type: application/json" -X POST -d "{
+            \"embeds\": [{
+              \"title\": \"🔄 TomaBot CI/CD - Rollback\",
+              \"description\": \"**Status:** Rollback executed\n**Triggered by:** ${{ github.actor }}\n**Reason:** Manual rollback requested\",
+              \"color\": 16776960,
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" ${{ env.DISCORD_WEBHOOK_URL }}
