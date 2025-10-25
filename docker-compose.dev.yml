@@ -1,45 +1,67 @@
 # docker-compose.dev.yml
-# Configuration for local development
-
-version: '3.8'
+# Configuration pour local development
 
 services:
+  # TomaBot Application (Development)
+  tomabot:
+    container_name: tomabot-app-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8080"  # Application port
+      - "5005:5005"  # Debug port
+    volumes:
+      # Hot reload: mount source code (optional)
+      - ./target:/app/target:ro
+    environment:
+      # Spring
+      SPRING_PROFILES_ACTIVE: dev
+
+      # Discord
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-tomabot}
+      DB_USER: ${DB_USER:-tomabot}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      # JVM Options (dev mode with debug)
+      JAVA_OPTS: -Xmx256m -Xms128m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+
+    networks:
+      - tomabot-network
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL (dev config)
   postgres:
     ports:
       - "5432:5432"  # Exposed for local access (DBeaver, etc.)
 
+  # Redis (dev config)
   redis:
     ports:
       - "6379:6379"  # Exposed for local access (redis-cli)
 
-  tomabot:
-    # In dev: local build instead of Docker Hub image
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8081"  # Expose API (if you add REST endpoints)
-      - "5005:5005"
-    volumes:
-      # Hot reload: mount source code (optional, for rapid development)
-      - ./target:/tomabotApp/target:ro
-    environment:
-      SPRING_PROFILES_ACTIVE: dev
-      # More verbose logs in dev
-      LOGGING_LEVEL_COM_TOMABOT: DEBUG
-      # JVM in dev mode (less memory, debug enabled)
-      JAVA_OPTS: -Xmx256m -Xms128m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
-
-  # Adminer (dev only)
+  # Adminer (database UI - dev only)
   adminer:
-    image: adminer:latest
-    container_name: tomabot-adminer
-    restart: unless-stopped
     ports:
       - "8080:8080"
-    networks:
-      - tomabot-network
-    depends_on:
-      - postgres
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres

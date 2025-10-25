@@ -1,51 +1,54 @@
-# .dockerignore
-# Fichiers à ignorer lors du build Docker
-
 # Git
 .git
 .gitignore
 .gitattributes
 
+# CI/CD
+.github
+
 # Documentation
 *.md
-docs/
-README.md
+.docs/
+LICENSE
 
 # IDE
 .idea/
 .vscode/
 *.iml
-.classpath
-.project
-.settings/
+*.swp
+*.swo
+*~
 
-# Logs
-logs/
-*.log
+# Maven
+target/
+!target/*.jar
+.mvn/
+mvnw
+mvnw.cmd
 
-# Environment files
+# Environment
 .env
 .env.*
-!.env.example
+*.env
+
+# Logs
+*.log
+logs/
 
 # Docker
-docker-compose*.yml
+docker-compose.yml
+docker-compose.*.yml
 Dockerfile
-.dockerignore
 
-# Build artifacts (on rebuild depuis Maven)
-target/
-*.jar
-*.war
-
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
+# Test data
+test-data/
+*.sql
+
 # Temporary files
 *.tmp
-*.swp
-*~
-
-# Tests
-src/test/
+*.temp
+*.bak

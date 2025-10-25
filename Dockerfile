@@ -1,40 +1,51 @@
-# Multi-stage build to optimize size
-FROM maven:3.9-eclipse-temurin-17-alpine AS build
+# ============================================
+# Stage 1: Build
+# ============================================
+FROM maven:3.9-eclipse-temurin-17-alpine AS builder
 
-WORKDIR /tomabotApp
+WORKDIR /app
 
-# Copy Maven configuration files
+# Copy pom.xml and download dependencies (cached layer)
 COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copy source code and build
 COPY src ./src
+RUN mvn clean package -DskipTests -B
 
-# Build application (skip tests for Docker build)
-RUN mvn clean package -DskipTests
-
-# Final stage: lightweight image
+# ============================================
+# Stage 2: Runtime
+# ============================================
 FROM eclipse-temurin:17-jre-alpine
 
-WORKDIR /tomabotApp
+# Install useful tools
+RUN apk add --no-cache curl tzdata
 
-# Create non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
+# Create app user (security best practice)
+RUN addgroup -g 1001 tomabot && \
+    adduser -D -u 1001 -G tomabot tomabot
 
-# Copy JAR from build stage
-COPY --from=build /tomabotApp/target/TomaBot-*.jar app.jar
+WORKDIR /app
+
+# Copy JAR from builder
+COPY --from=builder /app/target/*.jar app.jar
 
 # Change ownership
-RUN chown -R spring:spring /tomabotApp
+RUN chown -R tomabot:tomabot /app
 
-USER spring:spring
+# Switch to non-root user
+USER tomabot
 
-# Default environment variables (can be overridden)
-ENV SPRING_PROFILES_ACTIVE=dev
-ENV JAVA_OPTS=""
+# Expose port (for health check / future web dashboard)
+EXPOSE 8080
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8081/actuator/health || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-EXPOSE 8081
+# Environment variables (defaults, overridden by docker-compose)
+ENV SPRING_PROFILES_ACTIVE=prod \
+    JAVA_OPTS="-Xmx512m -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 
-# Entrypoint with JAVA_OPTS for JVM tuning
+# Run the application
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
