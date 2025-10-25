@@ -138,18 +138,6 @@ jobs:
       - name: 📦 Checkout code
         uses: actions/checkout@v4
 
-      - name: 📂 Copy Docker Compose files to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "docker-compose.yml,docker-compose.prod.yml,init-db.sql"
-          target: "/opt/tomabot"
-          strip_components: 0
-          overwrite: true
-
       - name: 🚀 Deploy to VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
